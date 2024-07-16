@@ -12,6 +12,11 @@ import torchvision.ops.roi_align as roi_align
 from lib.losses.loss_function import extract_input_from_tensor
 from lib.helpers.decode_helper import _topk,_nms
 
+from open_clip.MonoCLIP import MonoCLIP
+
+import matplotlib.pyplot as plt
+import numpy as np
+import torch.nn as nn
 
 
 def weights_init_xavier(m):
@@ -103,11 +108,19 @@ class MonoLSS(nn.Module):
         
         self.attention.apply(weights_init_xavier)
 
+        self.clip = MonoCLIP(data_class=['cars', 'people', 'road surface', 'building', 'trees', 'sky'])
+
 
     def forward(self, input, coord_ranges,calibs, targets=None, K=50, mode='train'):
         device_id = input.device
+        if self.training:
+            score_map = self.clip(input)
+                    
         feat = self.backbone(input)
         feat = self.feat_up(feat[self.first_level:])
+        
+        if score_map!=None:
+            score_map = nn.functional.interpolate(score_map, size=feat.shape[2:], mode="bilinear", align_corners=True)
 
         ret = {}
         '''
@@ -118,6 +131,7 @@ class MonoLSS(nn.Module):
         ret['heatmap']=self.heatmap(feat)
         ret['offset_2d']=self.offset_2d(feat)
         ret['size_2d']=self.size_2d(feat)
+        ret['scoremap']=score_map
 
         # torch.cuda.synchronize()
         #two stage
@@ -245,6 +259,25 @@ class MonoLSS(nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
+def show_mask(score_map):
+    score_map_np = score_map.squeeze().cpu().detach().numpy()
+    mask = np.argmax(score_map_np, axis=0)
+    plt.figure(figsize=(16, 8))
+    plt.imshow(mask, cmap="hot", alpha=0.5)
+    plt.show()
+
+def show_score(score_map):
+    score_map_np = score_map.squeeze().cpu().detach().numpy()
+    plt.figure(figsize=(16, 8))
+    plt.imshow(score_map_np[0], cmap="hot", alpha=0.5)
+    plt.show()
+
+def show_img(img):
+    img_np = img.squeeze().permute(1, 2, 0).cpu().numpy()
+    plt.figure(figsize=(16, 8))
+    plt.imshow(img_np)
+    plt.show()
+    
 
 if __name__ == '__main__':
     import torch

@@ -62,10 +62,13 @@ class Hierarchical_Task_Learning:
 
 
 class LSS_Loss(nn.Module):
-    def __init__(self,epoch):
+    def __init__(self,epoch,loss_weight=1e-3):
         super().__init__()
         self.stat = {}
         self.epoch = epoch
+        self.temp = 7e-2
+        self.ce = nn.CrossEntropyLoss()
+        self.loss_weight = loss_weight
 
     def forward(self, preds, targets):
 
@@ -86,6 +89,88 @@ class LSS_Loss(nn.Module):
 
         mean_loss = seg_loss + bbox2d_loss + bbox3d_loss
         return float(mean_loss), self.stat
+
+
+    def compute_proto_loss(self, feature:torch.Tensor, center_map: torch.Tensor, score_map: torch.Tensor):
+        B, E, H, W = feature.shape
+        # [B, C, h, w]
+        C = score_map.shape[1]  # num of classes in clip scoremap (dataset Class + extra background)
+        Class = center_map.shape[1] # num of classes in dataset
+
+        score_map = F.interpolate(score_map, (H, W))
+        
+        # [B, hw, C] 
+        score_map = score_map.contiguous().view(B, C, -1).transpose(1, 2).detach()
+
+        # [B, hw, Class] 
+        center_map = center_map.contiguous().view(B, Class, -1).transpose(1, 2).detach().cuda().to(torch.float32)
+
+        # scale up the gap between logits of different classes
+        score_map = (score_map / 1e-2).softmax(dim=-1)
+
+        # [B, E, hw]
+        feature = feature.contiguous().view(B, E, -1)
+        # [B, E, C]
+        cate_protos = feature @ score_map
+        # Normalize
+        cate_protos:torch.Tensor = cate_protos / torch.clamp_min(torch.norm(cate_protos, p=2, dim=1, keepdim=True), 1e-5)
+
+
+        # Positive Proto [B, E, Class]
+        pos_proto = feature @ center_map
+        # Normalize
+        pos_proto:torch.Tensor = pos_proto / torch.clamp_min(torch.norm(pos_proto, p=2, dim=1, keepdim=True), 1e-5)
+
+        # Negative Proto [E, B*(C-1)]
+        neg_protos = cate_protos.transpose(0, 1).contiguous().view(E, B*(C))
+
+        # Normalize [B, E, hw]
+        feat_norm:torch.Tensor = feature / torch.clamp_min(torch.norm(feature, p=2, dim=1, keepdim=True), 1e-5)
+
+        # distance between features at all pixels and neg protos in batch dim [B, hw, B*C]
+        feat_neg_score = feat_norm.transpose(1, 2) @ neg_protos
+        # distance between features at all pixels and pos proto in batch dim [B, hw, Class]
+        feat_pos_score = feat_norm.transpose(1, 2) @ pos_proto
+        
+        proto_loss = torch.tensor(0, dtype=torch.float32).cuda()
+        cls_gt_num = 0
+        for cls in range(Class):
+            # select the pos positions [K, 1, B*(C-1)], K is num of pixels inside the bbox
+            center_map_cls=center_map[:,:,cls]
+            if (center_map_cls > 0).sum() <=0: # no gt bbox for this cls, skip
+                continue
+            # remove the pos cls in the feat_neg_score
+            mask_neg = torch.ones_like(feat_neg_score, dtype=torch.bool)
+            pos_idx = torch.arange(B)*C+cls
+            mask_neg[:,:,  pos_idx] = False
+            # select the neg reagrding to cls as pos, in batch dim [B, hw, B*(C-1)]
+            feat_neg_score_cls = torch.masked_select(feat_neg_score, mask_neg).view(B, H*W, -1)
+            
+            # select the pos positions [K, 1, B*(C-1)]
+            l_neg = feat_neg_score_cls[center_map_cls > 0].unsqueeze(1)
+
+            # select the pos positions [K, 1, 1]
+            l_pos = feat_pos_score[center_map_cls> 0][:,cls].unsqueeze(1).unsqueeze(1)
+
+            # Contrast Logits, from Pos & Neg [K, 1+B*(C-1)]
+            contrast_logits = torch.cat([l_pos, l_neg], dim=-1).squeeze(1)
+
+            assert contrast_logits.shape[-1] == 1+B*(C-1)
+
+            K = contrast_logits.shape[0]
+            # Label
+            labels = 0*torch.ones(K).long().cuda() # the first one is positive, all the rest are neg
+            
+            if contrast_logits.shape[0] <= 0:
+                continue
+            else:
+                proto_loss+=self.ce(contrast_logits/self.temp, labels)
+                cls_gt_num += 1
+        # make sure there is at leat one GT class in the batch    
+        if cls_gt_num>0:
+            return self.loss_weight*(proto_loss/cls_gt_num)
+        else:
+            return 0
 
 
     def compute_segmentation_loss(self, input, target):

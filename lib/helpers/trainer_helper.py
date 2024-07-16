@@ -103,7 +103,7 @@ class Trainer(object):
         progress_bar = tqdm.tqdm(total=len(self.train_loader), leave=True, desc='pre-training loss stat')
         with torch.no_grad():        
             for batch_idx, (inputs,calibs,coord_ranges, targets, info) in enumerate(self.train_loader):
-                if self.cfg_train['debug'] == True and batch_idx + 1 >= 16:
+                if self.cfg_train['debug'] == True and batch_idx + 1 >= 4:
                     break
                 if type(inputs) != dict:
                     inputs = inputs.to(self.device)
