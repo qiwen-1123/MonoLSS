@@ -11,9 +11,11 @@ from lib.helpers.save_helper import load_checkpoint
 from lib.losses.loss_function import LSS_Loss,Hierarchical_Task_Learning
 from lib.helpers.decode_helper import extract_dets_from_outputs
 from lib.helpers.decode_helper import decode_detections
+from .wandb_dict import wandb_dict_converter
 
 from tools import eval
-
+import wandb
+import copy
 
 class Trainer(object):
     def __init__(self,
@@ -83,6 +85,8 @@ class Trainer(object):
                 self.logger.info('------ EVAL EPOCH %03d ------' % (self.epoch))
                 Car_res = self.eval_one_epoch()
                 self.logger.info(str(Car_res))
+                wandb_dict = wandb_dict_converter(Car_res)
+                wandb.log(wandb_dict)
 
 
             if ((self.epoch % self.cfg_train['save_frequency']) == 0
@@ -174,15 +178,18 @@ class Trainer(object):
             # display statistics in terminal
             if trained_batch % self.cfg_train['disp_frequency'] == 0:
                 log_str = 'BATCH[%04d/%04d]' % (trained_batch, len(self.train_loader))
+                disp_dict_wandb = copy.deepcopy(disp_dict)
                 for key in sorted(disp_dict.keys()):
                     disp_dict[key] = disp_dict[key] / self.cfg_train['disp_frequency']
+                    disp_dict_wandb[key] = disp_dict_wandb[key] / self.cfg_train['disp_frequency']
                     log_str += ' %s:%.4f,' %(key, disp_dict[key])
                     disp_dict[key] = 0  # reset statistics
                 self.logger.info(log_str)
+                wandb.log(disp_dict_wandb)
                 
         for key in stat_dict.keys():
             stat_dict[key] /= trained_batch
-                            
+        wandb.log(stat_dict)
         return stat_dict    
     def eval_one_epoch(self):
         self.model.eval()

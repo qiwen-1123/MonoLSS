@@ -1,8 +1,8 @@
-wandb_result/
+wandb/
 
 *.pth
 .vscode
 .idea
 **/__pycache__/
 
-MonoLSS/logs/
+MonoLSS/

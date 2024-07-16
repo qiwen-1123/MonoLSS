@@ -17,6 +17,10 @@ from lib.helpers.trainer_helper import Trainer
 from lib.helpers.tester_helper import Tester
 
 
+import wandb
+config_wandb = wandb.config
+
+
 parser = argparse.ArgumentParser(description='implementation of MonoLSS')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true', help='evaluate model on validation set')
 parser.add_argument('-t', '--test', dest='test', action='store_true', help='evaluate model on test set')
@@ -40,6 +44,8 @@ def main():
     cfg = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
     os.makedirs(cfg['trainer']['log_dir'], exist_ok=True)
     logger = create_logger(os.path.join(cfg['trainer']['log_dir'], 'train.log'))
+    config_wandb=cfg
+    wandb.init(project="MonoLSS",name="origin",config=config_wandb)
 
     import shutil
     if not args.evaluate:

@@ -3,10 +3,11 @@ import tqdm
 
 import torch
 import numpy as np
+import wandb
 
 import shutil
 from datetime import datetime
-
+from .wandb_dict import wandb_dict_converter
 
 
 from tools import eval
@@ -75,11 +76,13 @@ class Tester(object):
             shutil.rmtree(output_dir)
         self.save_results(results, output_dir=output_dir)
         progress_bar.close()
-        eval.eval_from_scrach(
+        Car_res = eval.eval_from_scrach(
             self.label_dir,
             os.path.join(output_dir, 'data'),
             self.eval_cls,
             ap_mode=40)
+        wandb_dict = wandb_dict_converter(Car_res)
+        wandb.log(wandb_dict)
 
 
     def save_results(self, results, output_dir='./outputs'):
