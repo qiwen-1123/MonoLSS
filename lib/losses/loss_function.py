@@ -62,7 +62,7 @@ class Hierarchical_Task_Learning:
 
 
 class LSS_Loss(nn.Module):
-    def __init__(self,epoch,loss_weight=1e-3):
+    def __init__(self,epoch,loss_weight=1e-2):
         super().__init__()
         self.stat = {}
         self.epoch = epoch
@@ -86,12 +86,18 @@ class LSS_Loss(nn.Module):
             bbox3d_loss = self.compute_bbox3d_loss(preds, targets)
 
         seg_loss = self.compute_segmentation_loss(preds, targets)
+        proto_loss = self.compute_proto_loss(preds, targets)
 
-        mean_loss = seg_loss + bbox2d_loss + bbox3d_loss
+        mean_loss = seg_loss + bbox2d_loss + bbox3d_loss + proto_loss
         return float(mean_loss), self.stat
 
 
-    def compute_proto_loss(self, feature:torch.Tensor, center_map: torch.Tensor, score_map: torch.Tensor):
+    def compute_proto_loss(self, preds, targets):
+        feature = preds['feat']
+        score_map = preds['scoremap']
+        center_map = targets['centermap']
+        
+        
         B, E, H, W = feature.shape
         # [B, C, h, w]
         C = score_map.shape[1]  # num of classes in clip scoremap (dataset Class + extra background)
@@ -168,8 +174,11 @@ class LSS_Loss(nn.Module):
                 cls_gt_num += 1
         # make sure there is at leat one GT class in the batch    
         if cls_gt_num>0:
-            return self.loss_weight*(proto_loss/cls_gt_num)
+            proto_loss = self.loss_weight*(proto_loss/cls_gt_num)
+            self.stat['proto_loss'] = proto_loss
+            return proto_loss
         else:
+            self.stat['proto_loss'] = 0
             return 0
 
 

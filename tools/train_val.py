@@ -45,7 +45,7 @@ def main():
     os.makedirs(cfg['trainer']['log_dir'], exist_ok=True)
     logger = create_logger(os.path.join(cfg['trainer']['log_dir'], 'train.log'))
     config_wandb=cfg
-    wandb.init(project="MonoLSS",name="origin",config=config_wandb)
+    # wandb.init(project="MonoLSS",name="origin",config=config_wandb)
 
     import shutil
     if not args.evaluate:

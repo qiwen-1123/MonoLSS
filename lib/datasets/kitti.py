@@ -10,6 +10,7 @@ from lib.datasets.utils import angle2class
 from lib.datasets.utils import gaussian_radius
 from lib.datasets.utils import draw_umich_gaussian
 from lib.datasets.utils import get_angle_from_box3d,check_range
+from lib.datasets.utils import draw_center_map
 from lib.datasets.kitti_utils import get_objects_from_label
 from lib.datasets.kitti_utils import Calibration
 from lib.datasets.kitti_utils import get_affine_transform
@@ -189,6 +190,7 @@ class KITTI(data.Dataset):
             height2d = np.zeros((self.max_objs, 1), dtype=np.float32)
             cls_ids = np.zeros((self.max_objs), dtype=np.int64)
             indices = np.zeros((self.max_objs), dtype=np.int64)
+            centermap = torch.zeros((self.num_classes, features_size[1], features_size[0]), dtype=torch.float32) # C * H * W
             # if torch.__version__ == '1.10.0+cu113':
             if torch.__version__ in ['1.10.0+cu113', '1.10.0', '1.6.0', '1.4.0']:
                 mask_2d = np.zeros((self.max_objs), dtype=np.bool)
@@ -244,7 +246,10 @@ class KITTI(data.Dataset):
                 cls_id = self.cls2id[objects[i].cls_type]
                 cls_ids[i] = cls_id
                 draw_umich_gaussian(heatmap[cls_id], center_heatmap, radius)
-    
+
+                # generate centermap
+                centermap = draw_center_map(cls_id, bbox_2d, centermap)
+
                 # encoding 2d/3d offset & 2d size
                 indices[i] = center_heatmap[1] * features_size[0] + center_heatmap[0]
                 offset_2d[i] = center_2d - center_heatmap
@@ -324,6 +329,9 @@ class KITTI(data.Dataset):
                     cls_id = self.cls2id[objects[i].cls_type]
                     cls_ids[i + object_num] = cls_id
                     draw_umich_gaussian(heatmap[cls_id], center_heatmap, radius)
+
+                    # generate centermap
+                    centermap = draw_center_map(cls_id, bbox_2d, centermap)
         
                     # encoding 2d/3d offset & 2d size
                     indices[i + object_num] = center_heatmap[1] * features_size[0] + center_heatmap[0]
@@ -363,6 +371,7 @@ class KITTI(data.Dataset):
                        'cls_ids': cls_ids,
                        'mask_2d': mask_2d,
                        'vis_depth': vis_depth,
+                       'centermap': centermap,
                        }
         else:
             targets = {}
@@ -403,3 +412,19 @@ if __name__ == '__main__':
     objects = dataset.get_label(0)
     for object in objects:
         print(object.to_kitti_format())
+
+
+
+def show_img(img):
+    img = np.transpose(img, (1, 2, 0))
+    plt.figure(figsize=(16, 8))
+    plt.imshow(img)  
+    plt.axis('off')  
+    plt.show() 
+    
+def show_heatmap(heatmap):
+    plt.figure(figsize=(16, 8))
+    plt.imshow(heatmap, cmap='hot') 
+    plt.title("Heatmap")
+    plt.axis('off')  
+    plt.show()

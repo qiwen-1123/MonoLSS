@@ -21,6 +21,7 @@ model:
   type: 'MonoLSS'
   backbone: 'dla34'
   neck: 'DLAUp'
+  clip_cls: ['people', 'cars', 'cyclists', 'road surface', 'building', 'trees', 'sky', 'traffic lights']
 
 optimizer:
   type: 'adam'
@@ -40,7 +41,7 @@ trainer:
   disp_frequency: 50 # display interval (in batch)
   log_dir: 'MonoLSS/logs/'
   out_dir: 'MonoLSS/output/'
-  debug: True
+  debug: False
   # resume_model: ''
 
 tester:

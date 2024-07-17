@@ -1,5 +1,5 @@
 import numpy as np
-
+import torch
 
 num_heading_bin = 12  # hyper param
 def check_range(angle):
@@ -109,3 +109,26 @@ def draw_msra_gaussian(heatmap, center, sigma):
     heatmap[img_y[0]:img_y[1], img_x[0]:img_x[1]],
     g[g_y[0]:g_y[1], g_x[0]:g_x[1]])
     return heatmap
+
+
+def draw_center_map(cls_idx, bbox_2d, centermap):
+    if (bbox_2d<0).any():
+        return centermap
+    x1, y1, x2, y2 = np.floor(bbox_2d).astype(int)
+    dx = gaussian(x2 - x1)
+    dy = gaussian(y2 - y1)
+    gau_map = dy @ dx.T
+    if gau_map.shape!=centermap[cls_idx, y1:y2, x1:x2].shape:
+        # print("bbox2d out of boundary")
+        # print("centermap shape: ",centermap.shape)
+        # print("box2d: ",bbox_2d)
+        return centermap
+    centermap[cls_idx, y1:y2, x1:x2] = torch.maximum(centermap[cls_idx, y1:y2, x1:x2], gau_map)  # gauss map
+    
+    return centermap
+
+def gaussian(kernel):
+    sigma = ((kernel-1) * 0.5 - 1) * 0.3 + 0.8
+    s = 2*(sigma**2)
+    dx = torch.exp(-torch.square(torch.arange(kernel).float() - int(kernel / 2)) / s)
+    return dx.view(-1, 1)

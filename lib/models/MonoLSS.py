@@ -37,7 +37,7 @@ def weights_init_xavier(m):
 
 
 class MonoLSS(nn.Module):
-    def __init__(self, backbone='dla34', neck='DLAUp', downsample=4, mean_size=None):
+    def __init__(self, clip_cls, backbone='dla34', neck='DLAUp', downsample=4, mean_size=None):
         assert downsample in [4, 8, 16, 32]
         super().__init__()
 
@@ -108,13 +108,15 @@ class MonoLSS(nn.Module):
         
         self.attention.apply(weights_init_xavier)
 
-        self.clip = MonoCLIP(data_class=['cars', 'people', 'road surface', 'building', 'trees', 'sky'])
+        self.clip = MonoCLIP(data_class=clip_cls)
 
 
     def forward(self, input, coord_ranges,calibs, targets=None, K=50, mode='train'):
         device_id = input.device
         if self.training:
             score_map = self.clip(input)
+        else:
+            score_map = None
                     
         feat = self.backbone(input)
         feat = self.feat_up(feat[self.first_level:])
@@ -128,6 +130,7 @@ class MonoLSS(nn.Module):
         for head in self.heads:
             ret[head] = self.__getattr__(head)(feat)
         '''
+        ret['feat']=feat
         ret['heatmap']=self.heatmap(feat)
         ret['offset_2d']=self.offset_2d(feat)
         ret['size_2d']=self.size_2d(feat)
@@ -269,7 +272,7 @@ def show_mask(score_map):
 def show_score(score_map):
     score_map_np = score_map.squeeze().cpu().detach().numpy()
     plt.figure(figsize=(16, 8))
-    plt.imshow(score_map_np[0], cmap="hot", alpha=0.5)
+    plt.imshow(score_map_np[1], cmap="hot", alpha=0.5) #scoremap for car
     plt.show()
 
 def show_img(img):
